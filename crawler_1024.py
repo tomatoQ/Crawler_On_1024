@@ -1,23 +1,33 @@
 import requests
 from bs4 import BeautifulSoup
 import os
+import re
 
-# 设置requests get的proxy
-proxies = {"http": "http://10.144.1.10:8080", "https": "http://10.144.1.10:8080", }
-# mainpage URL to format item URL
+# proxy setting
+proxies = {"http": "http://10.144.1.10:8080", "https": "http://10.144.1.10:8080",}
+
+# Mainpage URL to format item URL
 rootURL = 'http://t66y.com/'
+
 # DRG main URL to format page URL
 drgRootURL = 'http://t66y.com/thread0806.php?fid=16&search=&page='
 
-# picture root dir
-jgpRootDir = 'C:\develop\\1024\\'
+# Picture storage root dir
+jgpRootDir = "C:\\develop\\1024\\"
 
+# Replace forbidden charactors with "" in Windows' directory name
+def filterForbiddenChar(dirName):
+    legalDir = re.sub('[\/:*?"<>|]', '', dirName)
+    return legalDir
+
+# Generate page link list
 def getPageList():
     drgPageList = []
     for i in range(1, 101):
         drgPageList.append(drgRootURL + str(i))
     return drgPageList
 
+# Get item link list from page link
 def getItemList(pageLink):
     itemLinks = []
     res = requests.get(pageLink, proxies=proxies)
@@ -31,12 +41,9 @@ def getItemList(pageLink):
         fontLabel = header3.select('font')
         fontColor = ''
         # print(fontLabel)
-        # 忽略首页公告栏部分颜色为红色和蓝色的链接
         if (fontLabel):
-            # 获取font color
             fontColor = fontLabel[0]['color']
             # print(fontColor)
-        # 如果font color为blue或者red，则忽略此链接
         if ((fontColor != 'blue') and (fontColor != 'red')):
             ahref = aLabel[0]['href']
             if (ahref.endswith('html')):
@@ -50,22 +57,37 @@ def downloadPictureFromURL(url):
     # print(res.text)
 
     soup = BeautifulSoup(res.text, 'html.parser')
-    inputLabels = soup.select('input')
-    # print(inputs)
-
-    pictureDir = jgpRootDir + url.replace(':', '').replace('/', '') + '\\'
+    # Get the Chinese headers to use as the directory name
+    headerName = soup.select('h4')[0].text
+    pictureDir = jgpRootDir + filterForbiddenChar(headerName)
+    if os.path.exists(pictureDir):
+        print("Directory is existed: " + pictureDir)
+        return
     os.mkdir(pictureDir)
 
     num = 0
+    inputLabels = soup.select('input')
+    # print(inputs)
     for inputLabel in inputLabels:
         if inputLabel.has_attr('src'):
             jpgSrcLink = inputLabel['src']
-            print(jpgSrcLink)
+            print("Downloading picture: " + jpgSrcLink)
             jpgResponse = requests.get(jpgSrcLink, proxies=proxies)
             # print(jpgResponse.status_code)
 
             num += 1
-            jpgPath = pictureDir + str(num) + '.jpg'
+            jpgPath = pictureDir + '\\' + str(num) + '.jpg'
+
+            with open(jpgPath, 'wb') as f:
+                f.write(jpgResponse.content)
+        elif inputLabel.has_attr('data-src'):
+            jpgSrcLink = inputLabel['data-src']
+            print("Downloading picture: " + jpgSrcLink)
+            jpgResponse = requests.get(jpgSrcLink, proxies=proxies)
+            # print(jpgResponse.status_code)
+
+            num += 1
+            jpgPath = pictureDir + '\\' + str(num) + '.jpg'
 
             with open(jpgPath, 'wb') as f:
                 f.write(jpgResponse.content)
